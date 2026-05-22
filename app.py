@@ -74,43 +74,41 @@ def load_models():
                 print("Model loaded from registry (Spark)")
             except Exception as registry_error:
                 print(f"Registry Spark model load failed: {registry_error}")
-                # Try local spark artifact path
-                # search recursively for any artifacts/model directories under mlruns
-                local_model_paths = sorted(
+                # Try local Spark model directories under mlruns/**/artifacts/model
+                spark_model_paths = sorted(
                     glob.glob("mlruns/**/artifacts/model", recursive=True),
                     key=os.path.getmtime,
                     reverse=True
                 )
-                if local_model_paths:
-                    fallback_model_path = local_model_paths[0]
-                    # Try Spark flavor first
+                if spark_model_paths:
+                    fallback_model_path = spark_model_paths[0]
                     try:
                         model = mlflow.spark.load_model(fallback_model_path)
                         globals()['model_type'] = 'spark'
                         print(f"Model loaded from local Spark artifact: {fallback_model_path}")
                     except Exception as spark_local_err:
                         print(f"Local Spark load failed: {spark_local_err}")
-                        # As fallback, try python/pyfunc flavor (no JVM)
-                        try:
-                            model = mlflow.pyfunc.load_model(fallback_model_path)
-                            globals()['model_type'] = 'pyfunc'
-                            print(f"Model loaded as pyfunc from: {fallback_model_path}")
-                        except Exception as pyfunc_err:
-                            print(f"Local pyfunc load failed: {pyfunc_err}")
                 else:
-                    print("No local model artifact found in mlruns/*/*/artifacts/model")
+                    print("No local Spark model artifact found under mlruns/**/artifacts/model")
 
-            # If registry failed and we didn't set model yet, try loading any pyfunc artifact in mlruns
+            # If registry and local Spark both failed, try loading any pyfunc artifact in mlruns
             if model is None:
-                # look for any mlruns model artifact (recursive) and try pyfunc
-                any_local = glob.glob("mlruns/**/artifacts/model", recursive=True)
-                for p in sorted(any_local, key=os.path.getmtime, reverse=True):
+                artifact_dirs = sorted(
+                    glob.glob("mlruns/**/artifacts", recursive=True),
+                    key=os.path.getmtime,
+                    reverse=True
+                )
+                for p in artifact_dirs:
+                    mlmodel_path = os.path.join(p, "MLmodel")
+                    if not os.path.exists(mlmodel_path):
+                        continue
                     try:
                         model = mlflow.pyfunc.load_model(p)
                         globals()['model_type'] = 'pyfunc'
                         print(f"Fallback: model loaded as pyfunc from {p}")
                         break
-                    except Exception:
+                    except Exception as err:
+                        print(f"pyfunc load failed for {p}: {err}")
                         continue
 
     return preprocessor, model
