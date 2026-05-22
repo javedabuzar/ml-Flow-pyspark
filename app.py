@@ -71,7 +71,7 @@ def get_spark():
             "SPARK_DRIVER_MEMORY", "512m" if on_railway else "1g"
         )
         executor_mem = os.getenv(
-            "SPARK_EXECUTOR_MEMORY", "256m" if on_railway else "1g"
+            "SPARK_EXECUTOR_MEMORY", "512m" if on_railway else "1g"
         )
         os.makedirs(SPARK_LOCAL_DIR, exist_ok=True)
         # Single worker in containers avoids driver/worker connection refused on Railway
