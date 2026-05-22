@@ -5,10 +5,12 @@ from pydantic import BaseModel
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
 import mlflow.spark
+import glob
 import os
 import sys
 import yaml
 from dotenv import load_dotenv
+from threading import Lock
 
 load_dotenv()
 
@@ -21,42 +23,68 @@ params = yaml.safe_load(open("params.yaml"))
 
 app = FastAPI(title="Flood Prediction API", description="PySpark + MLflow powered API for Flood Probability")
 
-# Initialize Spark Session
+# Globals for lazy loading
 APP_NAME = "FloodPredictionAPI"
-spark = SparkSession.builder \
-    .appName(APP_NAME) \
-    .master("local") \
-    .config("spark.driver.memory", "512m") \
-    .config("spark.executor.memory", "512m") \
-    .config("spark.driver.host", "127.0.0.1") \
-    .config("spark.driver.bindAddress", "127.0.0.1") \
-    .config("spark.network.timeout", "800s") \
-    .config("spark.executor.heartbeatInterval", "100s") \
-    .config("spark.python.worker.reuse", "false") \
-    .config("spark.python.worker.timeout", "120") \
-    .config("spark.python.worker.faulthandler.enabled", "true") \
-    .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true") \
-    .config("spark.ui.enabled", "false") \
-    .config("spark.ui.showConsoleProgress", "false") \
-    .getOrCreate()
-
-# Load Models
+spark = None
+preprocessor = None
+model = None
+_models_lock = Lock()
 MODEL_NAME = "Flood_Prediction_Spark_Model"
 PREPROCESSOR_PATH = "src/models/preprocessing_pipeline_model"
 
-try:
-    # Load preprocessing pipeline
-    preprocessor = PipelineModel.load(PREPROCESSOR_PATH)
-    
-    # Load registered model from MLflow
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    model_uri = f"models:/{MODEL_NAME}/latest"
-    model = mlflow.spark.load_model(model_uri)
-    
-    print("Models loaded successfully!")
-except Exception as e:
-    print(f"Error loading models: {e}")
-    # We don't raise here so the app can start, but endpoints will fail
+def get_spark():
+    global spark
+    if spark is None:
+        spark = SparkSession.builder \
+            .appName(APP_NAME) \
+            .master(params.get('spark', {}).get('master', 'local')) \
+            .config("spark.driver.memory", "512m") \
+            .config("spark.executor.memory", "512m") \
+            .config("spark.driver.host", "127.0.0.1") \
+            .config("spark.driver.bindAddress", "127.0.0.1") \
+            .config("spark.network.timeout", "800s") \
+            .config("spark.executor.heartbeatInterval", "100s") \
+            .config("spark.python.worker.reuse", "false") \
+            .config("spark.python.worker.timeout", "120") \
+            .config("spark.python.worker.faulthandler.enabled", "true") \
+            .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true") \
+            .config("spark.ui.enabled", "false") \
+            .config("spark.ui.showConsoleProgress", "false") \
+            .getOrCreate()
+    return spark
+
+def load_models():
+    global preprocessor, model
+    with _models_lock:
+        if preprocessor is None:
+            if os.path.exists(PREPROCESSOR_PATH):
+                preprocessor = PipelineModel.load(PREPROCESSOR_PATH)
+                print(f"Preprocessor loaded from {PREPROCESSOR_PATH}")
+            else:
+                print(f"Preprocessor path not found: {PREPROCESSOR_PATH}")
+
+        if model is None:
+            mlflow.set_tracking_uri("sqlite:///mlflow.db")
+            model_uri = f"models:/{MODEL_NAME}/latest"
+            try:
+                model = mlflow.spark.load_model(model_uri)
+                print("Model loaded from registry")
+            except Exception as registry_error:
+                print(f"Registry model load failed: {registry_error}")
+                local_model_paths = sorted(
+                    glob.glob("mlruns/*/*/artifacts/model"),
+                    key=os.path.getmtime,
+                    reverse=True
+                )
+                if not local_model_paths:
+                    print("No local Spark model artifact found in mlruns/*/*/artifacts/model")
+                else:
+                    fallback_model_path = local_model_paths[0]
+                    print(f"Falling back to local Spark model: {fallback_model_path}")
+                    model = mlflow.spark.load_model(fallback_model_path)
+                    print("Model loaded from local artifact")
+
+    return preprocessor, model
 
 # Mount static files
 os.makedirs("static", exist_ok=True)
@@ -91,6 +119,11 @@ def home():
 @app.post("/predict")
 def predict(data: PredictionInput):
     try:
+        # Ensure Spark and models are available (lazy load)
+        sp = get_spark()
+        pr, mdl = load_models()
+        if pr is None or mdl is None:
+            raise RuntimeError("Model or preprocessor not available. Check server logs.")
         # Use JVM-native JSON loading to avoid Python worker overhead
         import json
         import tempfile
@@ -132,6 +165,26 @@ def predict(data: PredictionInput):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+def health():
+    status = {"app": True}
+    try:
+        sp = get_spark()
+        status["spark"] = True
+    except Exception as e:
+        status["spark"] = False
+        status["spark_error"] = str(e)
+
+    try:
+        pr, mdl = load_models()
+        status["model_loaded"] = (pr is not None and mdl is not None)
+    except Exception as e:
+        status["model_loaded"] = False
+        status["model_error"] = str(e)
+
+    return status
 
 if __name__ == "__main__":
     import uvicorn

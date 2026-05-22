@@ -337,7 +337,10 @@
                     body: JSON.stringify(data)
                 });
 
-                if (!response.ok) throw new Error('API Error');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errorText}`);
+                }
                 
                 const result = await response.json();
                 updateUI(result.flood_probability);
