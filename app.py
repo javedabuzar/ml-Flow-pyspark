@@ -31,6 +31,7 @@ preprocessor = None
 model = None
 model_type = None  # 'spark' or 'pyfunc'
 _models_lock = Lock()
+_last_load_spark = None  # track cache mode so /health cannot poison /predict
 MODEL_NAME = "Flood_Prediction_Spark_Model"
 PREPROCESSOR_PATH = "src/models/preprocessing_pipeline_model"
 _default_spark_dir = os.path.join(os.environ.get("TEMP", "/tmp"), "spark")
@@ -70,7 +71,7 @@ def get_spark():
 
 
 def reset_spark_and_models():
-    global spark, preprocessor, model, model_type
+    global spark, preprocessor, model, model_type, _last_load_spark
     with _models_lock:
         if spark is not None:
             try:
@@ -81,6 +82,16 @@ def reset_spark_and_models():
         preprocessor = None
         model = None
         model_type = None
+        _last_load_spark = None
+
+
+def _clear_model_cache_if_mode_changed(load_spark: bool):
+    global preprocessor, model, model_type, _last_load_spark
+    if _last_load_spark is not None and _last_load_spark != load_spark:
+        preprocessor = None
+        model = None
+        model_type = None
+    _last_load_spark = load_spark
 
 
 def _is_spark_session_error(exc: Exception) -> bool:
@@ -130,13 +141,17 @@ def load_models(load_spark=None):
     if load_spark is None:
         load_spark = _use_spark_enabled()
     with _models_lock:
+        _clear_model_cache_if_mode_changed(load_spark)
         if load_spark:
             get_spark()
         if preprocessor is None:
             if load_spark and os.path.exists(PREPROCESSOR_PATH):
-                get_spark()
-                preprocessor = PipelineModel.load(PREPROCESSOR_PATH)
-                print(f"Preprocessor loaded from {PREPROCESSOR_PATH}")
+                try:
+                    get_spark()
+                    preprocessor = PipelineModel.load(PREPROCESSOR_PATH)
+                    print(f"Preprocessor loaded from {PREPROCESSOR_PATH}")
+                except Exception as prep_err:
+                    print(f"Preprocessor load failed: {prep_err}")
             elif os.path.exists(PREPROCESSOR_PATH):
                 print(f"Preprocessor file exists but Spark loading is disabled for this call: {PREPROCESSOR_PATH}")
             else:
@@ -187,12 +202,16 @@ def load_models(load_spark=None):
                     if loader == "mlflow.spark":
                         try:
                             get_spark()
+                            model = mlflow.spark.load_model(p)
+                            globals()["model_type"] = "spark"
+                            print(f"Spark model loaded from artifact path: {p}")
+                            break
                         except Exception as spark_err:
-                            print(f"Skipping Spark pyfunc artifact (no session): {p}: {spark_err}")
+                            print(f"Spark artifact load failed for {p}: {spark_err}")
                             continue
                     try:
                         model = mlflow.pyfunc.load_model(p)
-                        globals()['model_type'] = 'pyfunc'
+                        globals()["model_type"] = "pyfunc"
                         print(f"Fallback: model loaded as pyfunc from {p}")
                         break
                     except Exception as err:
@@ -307,28 +326,18 @@ def predict(data: PredictionInput):
 
 @app.get("/health")
 def health():
-    status = {
+    spark_ready = (
+        _spark_artifacts_present()
+        and os.path.exists(PREPROCESSOR_PATH)
+    )
+    return {
         "app": True,
         "use_spark": _use_spark_enabled(),
         "spark_artifacts_present": _spark_artifacts_present(),
         "preprocessor_present": os.path.exists(PREPROCESSOR_PATH),
+        "model_type": "spark" if spark_ready else None,
+        "model_loaded": spark_ready,
     }
-    # Do not start Spark here — starting Spark can crash on small containers.
-    try:
-        pr, mdl = load_models(load_spark=False)
-        mtype = globals().get("model_type")
-        status["model_type"] = mtype
-        if mdl is None:
-            status["model_loaded"] = False
-        elif mtype == "spark":
-            status["model_loaded"] = pr is not None
-        else:
-            status["model_loaded"] = True
-    except Exception as e:
-        status["model_loaded"] = False
-        status["model_error"] = str(e)
-
-    return status
 
 if __name__ == "__main__":
     import uvicorn
