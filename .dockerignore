@@ -1,0 +1,18 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+bin/
+conf/
+include/
+jmods/
+legal/
+lib/
+flood data/
+Data & Models/
+scratch/
+*.log
+uv.lock
+.env
+.vscode
