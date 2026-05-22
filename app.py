@@ -259,38 +259,20 @@ def _get_raw_feature_dtypes() -> dict:
     if _feature_dtypes_cache is not None:
         return _feature_dtypes_cache
 
-    raw_path = params["data"]["raw_path"]
-    dtypes = {}
-    if os.path.isdir(raw_path) and os.listdir(raw_path):
-        try:
-            sp = get_spark()
-            schema = sp.read.parquet(raw_path).schema
-            skip = {TARGET_COL, "id", "ID"}
-            dtypes = {
-                f.name: f.dataType
-                for f in schema.fields
-                if f.name in _feature_names() and f.name not in skip
-            }
-        except Exception as e:
-            print(f"Could not read raw parquet schema: {e}")
-
-    for name in _feature_names():
-        if name not in dtypes:
-            # CSV inferSchema uses doubles; must match StringIndexer labels (e.g. "5.0")
-            dtypes[name] = DoubleType()
+    # Training notebook uses string feature columns; API sliders must match ("5" not 5.0)
+    dtypes = {name: StringType() for name in _feature_names()}
 
     _feature_dtypes_cache = dtypes
     return dtypes
 
 
 def _coerce_feature_value(val: float, dtype):
-    if isinstance(dtype, StringType):
+    # Training data uses string categoricals; always stringify slider ints first
+    if isinstance(dtype, (StringType, IntegerType)):
         return str(int(round(val)))
-    if isinstance(dtype, IntegerType):
-        return int(round(val))
     if isinstance(dtype, DoubleType):
         return float(val)
-    return float(val)
+    return str(int(round(val)))
 
 
 def _build_spark_input_df(sp, input_dict: dict):

@@ -39,16 +39,16 @@ def predict():
     from pyspark.sql.types import IntegerType, StringType, DoubleType
 
     def coerce(val, dtype):
-        if isinstance(dtype, StringType):
+        if isinstance(dtype, (StringType, IntegerType)):
             return str(int(round(val)))
-        if isinstance(dtype, IntegerType):
-            return int(round(val))
-        return float(val)
+        if isinstance(dtype, DoubleType):
+            return float(val)
+        return str(int(round(val)))
 
-    sample_values = [coerce(5, schema.get(c, IntegerType())) for c in input_cols]
+    sample_values = [coerce(5, schema.get(c, StringType())) for c in input_cols]
     from pyspark.sql.types import StructType, StructField
 
-    struct = StructType([StructField(c, schema.get(c, IntegerType()), True) for c in input_cols])
+    struct = StructType([StructField(c, schema.get(c, StringType()), True) for c in input_cols])
     new_data = spark.createDataFrame([sample_values], schema=struct)
     
     print("\nNew Data (Sample):")
