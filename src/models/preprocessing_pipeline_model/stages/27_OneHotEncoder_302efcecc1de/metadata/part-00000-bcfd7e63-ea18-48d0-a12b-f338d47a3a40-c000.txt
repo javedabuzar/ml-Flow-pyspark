@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511117403,"sparkVersion":"4.1.1","uid":"OneHotEncoder_302efcecc1de","paramMap":{"handleInvalid":"keep","inputCol":"Landslides_indexed","outputCol":"Landslides_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_302efcecc1de__output"}}

@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511119929,"sparkVersion":"4.1.1","uid":"OneHotEncoder_6818ceb16e99","paramMap":{"handleInvalid":"keep","inputCol":"WetlandLoss_indexed","outputCol":"WetlandLoss_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_6818ceb16e99__output"}}

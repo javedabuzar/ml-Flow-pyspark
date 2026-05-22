@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.StringIndexerModel","timestamp":1778511111741,"sparkVersion":"4.1.1","uid":"StringIndexer_12bfda58f693","paramMap":{"handleInvalid":"keep","inputCol":"ClimateChange","outputCol":"ClimateChange_indexed"},"defaultParamMap":{"handleInvalid":"error","outputCol":"StringIndexer_12bfda58f693__output","stringOrderType":"frequencyDesc"}}

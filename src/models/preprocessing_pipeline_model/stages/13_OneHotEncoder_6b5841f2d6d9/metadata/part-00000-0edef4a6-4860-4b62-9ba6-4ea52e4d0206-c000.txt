@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511112800,"sparkVersion":"4.1.1","uid":"OneHotEncoder_6b5841f2d6d9","paramMap":{"handleInvalid":"keep","inputCol":"DamsQuality_indexed","outputCol":"DamsQuality_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_6b5841f2d6d9__output"}}

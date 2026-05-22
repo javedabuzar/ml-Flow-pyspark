@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511118114,"sparkVersion":"4.1.1","uid":"OneHotEncoder_46ec53004c68","paramMap":{"handleInvalid":"keep","inputCol":"Watersheds_indexed","outputCol":"Watersheds_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_46ec53004c68__output"}}

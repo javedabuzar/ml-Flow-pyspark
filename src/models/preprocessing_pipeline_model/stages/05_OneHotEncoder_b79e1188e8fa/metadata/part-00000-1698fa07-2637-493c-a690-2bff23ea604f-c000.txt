@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511109864,"sparkVersion":"4.1.1","uid":"OneHotEncoder_b79e1188e8fa","paramMap":{"handleInvalid":"keep","inputCol":"RiverManagement_indexed","outputCol":"RiverManagement_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_b79e1188e8fa__output"}}

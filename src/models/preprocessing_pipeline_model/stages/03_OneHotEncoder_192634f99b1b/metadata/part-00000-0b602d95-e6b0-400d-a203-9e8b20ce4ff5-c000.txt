@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511109053,"sparkVersion":"4.1.1","uid":"OneHotEncoder_192634f99b1b","paramMap":{"handleInvalid":"keep","inputCol":"TopographyDrainage_indexed","outputCol":"TopographyDrainage_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_192634f99b1b__output"}}

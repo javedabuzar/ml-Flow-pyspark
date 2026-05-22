@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.StringIndexerModel","timestamp":1778511117738,"sparkVersion":"4.1.1","uid":"StringIndexer_3b55b2f76167","paramMap":{"handleInvalid":"keep","inputCol":"Watersheds","outputCol":"Watersheds_indexed"},"defaultParamMap":{"handleInvalid":"error","outputCol":"StringIndexer_3b55b2f76167__output","stringOrderType":"frequencyDesc"}}

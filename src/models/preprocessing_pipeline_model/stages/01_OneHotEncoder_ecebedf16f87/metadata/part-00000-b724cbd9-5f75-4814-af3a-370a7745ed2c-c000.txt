@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511108041,"sparkVersion":"4.1.1","uid":"OneHotEncoder_ecebedf16f87","paramMap":{"handleInvalid":"keep","inputCol":"MonsoonIntensity_indexed","outputCol":"MonsoonIntensity_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_ecebedf16f87__output"}}

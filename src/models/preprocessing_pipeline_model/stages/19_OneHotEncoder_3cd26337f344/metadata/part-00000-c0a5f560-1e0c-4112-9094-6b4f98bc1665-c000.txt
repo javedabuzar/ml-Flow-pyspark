@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511114750,"sparkVersion":"4.1.1","uid":"OneHotEncoder_3cd26337f344","paramMap":{"handleInvalid":"keep","inputCol":"Encroachments_indexed","outputCol":"Encroachments_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_3cd26337f344__output"}}

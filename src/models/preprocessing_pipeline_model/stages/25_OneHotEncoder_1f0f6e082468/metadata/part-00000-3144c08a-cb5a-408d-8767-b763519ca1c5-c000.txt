@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511116731,"sparkVersion":"4.1.1","uid":"OneHotEncoder_1f0f6e082468","paramMap":{"handleInvalid":"keep","inputCol":"CoastalVulnerability_indexed","outputCol":"CoastalVulnerability_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_1f0f6e082468__output"}}

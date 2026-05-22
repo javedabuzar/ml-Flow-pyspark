@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511113451,"sparkVersion":"4.1.1","uid":"OneHotEncoder_a5c6d96ad0d9","paramMap":{"handleInvalid":"keep","inputCol":"Siltation_indexed","outputCol":"Siltation_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_a5c6d96ad0d9__output"}}

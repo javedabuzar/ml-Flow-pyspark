@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511112101,"sparkVersion":"4.1.1","uid":"OneHotEncoder_e599cd8d9b0b","paramMap":{"handleInvalid":"keep","inputCol":"ClimateChange_indexed","outputCol":"ClimateChange_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_e599cd8d9b0b__output"}}

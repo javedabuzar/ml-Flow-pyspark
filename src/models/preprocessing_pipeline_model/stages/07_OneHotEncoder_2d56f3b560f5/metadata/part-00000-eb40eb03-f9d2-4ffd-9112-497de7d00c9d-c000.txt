@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511110631,"sparkVersion":"4.1.1","uid":"OneHotEncoder_2d56f3b560f5","paramMap":{"handleInvalid":"keep","inputCol":"Deforestation_indexed","outputCol":"Deforestation_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_2d56f3b560f5__output"}}

@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.OneHotEncoderModel","timestamp":1778511121164,"sparkVersion":"4.1.1","uid":"OneHotEncoder_0ea1190c0997","paramMap":{"handleInvalid":"keep","inputCol":"PoliticalFactors_indexed","outputCol":"PoliticalFactors_vec"},"defaultParamMap":{"dropLast":true,"handleInvalid":"error","outputCol":"OneHotEncoder_0ea1190c0997__output"}}
