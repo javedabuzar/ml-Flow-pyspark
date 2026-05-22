@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -19,11 +20,28 @@ load_dotenv()
 # Ensure PySpark workers use the same Python as this process
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
 
 # Load params
 params = yaml.safe_load(open("params.yaml"))
 
-app = FastAPI(title="Flood Prediction API", description="PySpark + MLflow powered API for Flood Probability")
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    if _use_spark_enabled():
+        try:
+            load_models(load_spark=True)
+            print("Spark models warmed up on startup")
+        except Exception as warmup_err:
+            print(f"Spark warmup skipped: {warmup_err}")
+    yield
+    reset_spark_and_models()
+
+
+app = FastAPI(
+    title="Flood Prediction API",
+    description="PySpark + MLflow powered API for Flood Probability",
+    lifespan=lifespan,
+)
 
 # Globals for lazy loading
 APP_NAME = "FloodPredictionAPI"
@@ -45,24 +63,44 @@ def _use_spark_enabled() -> bool:
     return os.getenv("USE_SPARK", "1").lower() not in ("0", "false", "no")
 
 
+def _spark_is_alive() -> bool:
+    global spark
+    if spark is None:
+        return False
+    try:
+        return not spark.sparkContext._jsc.sc().isStopped()
+    except Exception:
+        return False
+
+
 def get_spark():
     global spark
+    if spark is not None and not _spark_is_alive():
+        try:
+            spark.stop()
+        except Exception:
+            pass
+        spark = None
+
     if spark is None:
         driver_mem = os.getenv("SPARK_DRIVER_MEMORY", "1g")
         executor_mem = os.getenv("SPARK_EXECUTOR_MEMORY", "1g")
         os.makedirs(SPARK_LOCAL_DIR, exist_ok=True)
-        master = params.get("spark", {}).get("master", "local[*]")
+        # Single worker in containers avoids driver/worker connection refused on Railway
+        master = os.getenv("SPARK_MASTER", params.get("spark", {}).get("master", "local[1]"))
+        if os.getenv("PORT") and master == "local[*]":
+            master = "local[1]"
         spark = (
             SparkSession.builder.appName(APP_NAME)
             .master(master)
             .config("spark.driver.memory", driver_mem)
             .config("spark.executor.memory", executor_mem)
             .config("spark.driver.host", "127.0.0.1")
-            .config("spark.driver.bindAddress", "0.0.0.0")
+            .config("spark.driver.bindAddress", "127.0.0.1")
             .config("spark.local.dir", SPARK_LOCAL_DIR)
             .config("spark.network.timeout", "800s")
             .config("spark.executor.heartbeatInterval", "100s")
-            .config("spark.python.worker.reuse", "false")
+            .config("spark.python.worker.reuse", "true")
             .config("spark.python.worker.timeout", "120")
             .config("spark.python.worker.faulthandler.enabled", "true")
             .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true")
@@ -99,7 +137,13 @@ def _clear_model_cache_if_mode_changed(load_spark: bool):
 
 def _is_spark_session_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return "no active or default spark session" in msg or "spark session" in msg
+    return (
+        "no active or default spark session" in msg
+        or "spark session" in msg
+        or "connection refused" in msg
+        or "errno 111" in msg
+        or "jvm is not running" in msg
+    )
 
 
 def _spark_artifacts_present() -> bool:
@@ -336,7 +380,7 @@ def predict(data: PredictionInput):
     input_dict = {k: float(v) for k, v in data.model_dump().items()}
     last_error = None
 
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             if attempt > 0:
                 reset_spark_and_models()
@@ -364,8 +408,8 @@ def predict(data: PredictionInput):
             import traceback
 
             traceback.print_exc()
-            if attempt == 0 and load_spark and _is_spark_session_error(e):
-                print("Retrying prediction after Spark session reset...")
+            if attempt < 2 and load_spark and _is_spark_session_error(e):
+                print(f"Retrying prediction after Spark reset (attempt {attempt + 1})...")
                 continue
             raise HTTPException(status_code=500, detail=str(last_error))
 

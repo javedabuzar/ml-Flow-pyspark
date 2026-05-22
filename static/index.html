@@ -333,7 +333,7 @@
         function onSliderInput(featureId, value) {
             document.getElementById('val-' + featureId).innerText = value;
             clearTimeout(predictDebounceTimer);
-            predictDebounceTimer = setTimeout(() => predictFlood(), 400);
+            predictDebounceTimer = setTimeout(() => predictFlood(), 700);
         }
 
         function collectInputData() {
@@ -433,7 +433,9 @@
 
         window.onload = () => {
             initInputs();
-            predictFlood();
+            document.getElementById('riskStatus').innerText = 'READY';
+            document.getElementById('riskDesc').innerText =
+                'Move sliders or click Analyze Risk to run the PySpark model.';
         };
     </script>
 </body>
