@@ -180,6 +180,8 @@ def load_models(load_spark=None):
                 artifact_dirs.sort(key=lambda p: _pyfunc_artifact_sort_key(p, load_spark))
                 for p in artifact_dirs:
                     loader = _pyfunc_loader_module(p)
+                    if loader == "mlflow.sklearn" and load_spark:
+                        continue
                     if loader == "mlflow.spark" and not load_spark:
                         continue
                     if loader == "mlflow.spark":
