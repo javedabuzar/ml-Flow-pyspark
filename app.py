@@ -276,7 +276,8 @@ def _get_raw_feature_dtypes() -> dict:
 
     for name in _feature_names():
         if name not in dtypes:
-            dtypes[name] = IntegerType()
+            # CSV inferSchema uses doubles; must match StringIndexer labels (e.g. "5.0")
+            dtypes[name] = DoubleType()
 
     _feature_dtypes_cache = dtypes
     return dtypes
