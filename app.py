@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -25,23 +24,7 @@ os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
 # Load params
 params = yaml.safe_load(open("params.yaml"))
 
-@asynccontextmanager
-async def lifespan(app_instance: FastAPI):
-    if _use_spark_enabled():
-        try:
-            load_models(load_spark=True)
-            print("Spark models warmed up on startup")
-        except Exception as warmup_err:
-            print(f"Spark warmup skipped: {warmup_err}")
-    yield
-    reset_spark_and_models()
-
-
-app = FastAPI(
-    title="Flood Prediction API",
-    description="PySpark + MLflow powered API for Flood Probability",
-    lifespan=lifespan,
-)
+app = FastAPI(title="Flood Prediction API", description="PySpark + MLflow powered API for Flood Probability")
 
 # Globals for lazy loading
 APP_NAME = "FloodPredictionAPI"
@@ -83,12 +66,17 @@ def get_spark():
         spark = None
 
     if spark is None:
-        driver_mem = os.getenv("SPARK_DRIVER_MEMORY", "1g")
-        executor_mem = os.getenv("SPARK_EXECUTOR_MEMORY", "1g")
+        on_railway = bool(os.getenv("PORT"))
+        driver_mem = os.getenv(
+            "SPARK_DRIVER_MEMORY", "512m" if on_railway else "1g"
+        )
+        executor_mem = os.getenv(
+            "SPARK_EXECUTOR_MEMORY", "256m" if on_railway else "1g"
+        )
         os.makedirs(SPARK_LOCAL_DIR, exist_ok=True)
         # Single worker in containers avoids driver/worker connection refused on Railway
         master = os.getenv("SPARK_MASTER", params.get("spark", {}).get("master", "local[1]"))
-        if os.getenv("PORT") and master == "local[*]":
+        if on_railway and master in ("local[*]", "local"):
             master = "local[1]"
         spark = (
             SparkSession.builder.appName(APP_NAME)
@@ -106,6 +94,8 @@ def get_spark():
             .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true")
             .config("spark.ui.enabled", "false")
             .config("spark.ui.showConsoleProgress", "false")
+            .config("spark.sql.shuffle.partitions", "2")
+            .config("spark.default.parallelism", "1")
             .getOrCreate()
         )
     return spark

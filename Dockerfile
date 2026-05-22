@@ -7,6 +7,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV SPARK_MASTER=local[1]
+ENV SPARK_DRIVER_MEMORY=512m
+ENV SPARK_EXECUTOR_MEMORY=256m
+ENV SPARK_LOCAL_IP=127.0.0.1
 
 WORKDIR /app
 
