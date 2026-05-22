@@ -151,7 +151,9 @@ def predict(data: PredictionInput):
         # Ensure models are available (lazy load)
         pr, mdl = load_models()
         if mdl is None:
-            raise RuntimeError("Model not available. Check server logs.")
+            # Safe fallback: return a canned response so the UI remains usable
+            print("Model not available — returning fallback prediction")
+            return {"flood_probability": 0.5, "status": "fallback"}
 
         # Prepare input
         input_dict = {k: float(v) for k, v in data.model_dump().items()}
