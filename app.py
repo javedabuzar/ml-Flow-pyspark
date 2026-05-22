@@ -219,8 +219,17 @@ def health():
     # Instead, only check model availability (pyfunc or spark) without forcing JVM.
     try:
         pr, mdl = load_models()
-        status["model_loaded"] = (pr is not None and mdl is not None)
-        status["model_type"] = globals().get('model_type')
+        mtype = globals().get('model_type')
+        status["model_type"] = mtype
+        if mdl is None:
+            status["model_loaded"] = False
+        else:
+            if mtype == 'spark':
+                # Spark model needs preprocessor
+                status["model_loaded"] = (pr is not None)
+            else:
+                # pyfunc or other python model — preprocessor optional
+                status["model_loaded"] = True
     except Exception as e:
         status["model_loaded"] = False
         status["model_error"] = str(e)
