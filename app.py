@@ -28,6 +28,7 @@ APP_NAME = "FloodPredictionAPI"
 spark = None
 preprocessor = None
 model = None
+model_type = None  # 'spark' or 'pyfunc'
 _models_lock = Lock()
 MODEL_NAME = "Flood_Prediction_Spark_Model"
 PREPROCESSOR_PATH = "src/models/preprocessing_pipeline_model"
@@ -62,27 +63,55 @@ def load_models():
                 print(f"Preprocessor loaded from {PREPROCESSOR_PATH}")
             else:
                 print(f"Preprocessor path not found: {PREPROCESSOR_PATH}")
-
         if model is None:
             mlflow.set_tracking_uri("sqlite:///mlflow.db")
             model_uri = f"models:/{MODEL_NAME}/latest"
+            # Try Spark model from registry first
             try:
                 model = mlflow.spark.load_model(model_uri)
-                print("Model loaded from registry")
+                globals()['model_type'] = 'spark'
+                print("Model loaded from registry (Spark)")
             except Exception as registry_error:
-                print(f"Registry model load failed: {registry_error}")
+                print(f"Registry Spark model load failed: {registry_error}")
+                # Try local spark artifact path
                 local_model_paths = sorted(
                     glob.glob("mlruns/*/*/artifacts/model"),
                     key=os.path.getmtime,
                     reverse=True
                 )
-                if not local_model_paths:
-                    print("No local Spark model artifact found in mlruns/*/*/artifacts/model")
-                else:
+                if local_model_paths:
                     fallback_model_path = local_model_paths[0]
-                    print(f"Falling back to local Spark model: {fallback_model_path}")
-                    model = mlflow.spark.load_model(fallback_model_path)
-                    print("Model loaded from local artifact")
+                    # Try Spark flavor first
+                    try:
+                        model = mlflow.spark.load_model(fallback_model_path)
+                        globals()['model_type'] = 'spark'
+                        print(f"Model loaded from local Spark artifact: {fallback_model_path}")
+                    except Exception as spark_local_err:
+                        print(f"Local Spark load failed: {spark_local_err}")
+                        # As fallback, try python/pyfunc flavor (no JVM)
+                        try:
+                            import mlflow.pyfunc
+                            model = mlflow.pyfunc.load_model(fallback_model_path)
+                            globals()['model_type'] = 'pyfunc'
+                            print(f"Model loaded as pyfunc from: {fallback_model_path}")
+                        except Exception as pyfunc_err:
+                            print(f"Local pyfunc load failed: {pyfunc_err}")
+                else:
+                    print("No local model artifact found in mlruns/*/*/artifacts/model")
+
+            # If registry failed and we didn't set model yet, try loading any pyfunc artifact in mlruns
+            if model is None:
+                # look for any mlruns model artifact and try pyfunc
+                any_local = glob.glob("mlruns/*/*/artifacts/model")
+                for p in sorted(any_local, key=os.path.getmtime, reverse=True):
+                    try:
+                        import mlflow.pyfunc
+                        model = mlflow.pyfunc.load_model(p)
+                        globals()['model_type'] = 'pyfunc'
+                        print(f"Fallback: model loaded as pyfunc from {p}")
+                        break
+                    except Exception:
+                        continue
 
     return preprocessor, model
 
@@ -119,43 +148,57 @@ def home():
 @app.post("/predict")
 def predict(data: PredictionInput):
     try:
-        # Ensure Spark and models are available (lazy load)
-        sp = get_spark()
+        # Ensure models are available (lazy load)
         pr, mdl = load_models()
-        if pr is None or mdl is None:
-            raise RuntimeError("Model or preprocessor not available. Check server logs.")
-        # Use JVM-native JSON loading to avoid Python worker overhead
-        import json
-        import tempfile
-        # Cast to int to match training data (integer features)
-        input_dict = {k: int(v) for k, v in data.model_dump().items()}
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump([input_dict], f)
-            temp_path = f.name.replace("\\", "/")
-        
-        input_df = spark.read.json(temp_path)
-        print(f"Input DF loaded via JSON. Columns: {input_df.columns}")
-        
-        print(f"Input DF created. Columns: {input_df.columns}")
-        
-        # Preprocess
-        transformed_df = preprocessor.transform(input_df)
-        print("Preprocessing done.")
-        
-        # Predict
-        prediction_df = model.transform(transformed_df)
-        print("Prediction transformation done.")
-        
-        # Extract result
-        # Using first() instead of collect() for single row
-        row = prediction_df.select("prediction").first()
-        if row is None:
-            raise ValueError("Model returned no prediction")
-        result = row[0]
-        
+        if mdl is None:
+            raise RuntimeError("Model not available. Check server logs.")
+
+        # Prepare input
+        input_dict = {k: float(v) for k, v in data.model_dump().items()}
+
+        # If model is a Spark model, use Spark pipeline
+        if globals().get('model_type') == 'spark':
+            sp = get_spark()
+            import json
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump([input_dict], f)
+                temp_path = f.name.replace("\\", "/")
+
+            input_df = sp.read.json(temp_path)
+            print(f"Input DF loaded via JSON. Columns: {input_df.columns}")
+
+            if pr is None:
+                raise RuntimeError("Preprocessor not found for Spark model")
+
+            transformed_df = pr.transform(input_df)
+            print("Preprocessing done.")
+
+            prediction_df = mdl.transform(transformed_df)
+            print("Prediction transformation done.")
+
+            row = prediction_df.select("prediction").first()
+            if row is None:
+                raise ValueError("Model returned no prediction")
+            result = row[0]
+
+        else:
+            # Try pyfunc / sklearn-like model (no Spark)
+            try:
+                import pandas as pd
+                py_input = pd.DataFrame([input_dict])
+                # mlflow pyfunc models expose predict
+                preds = mdl.predict(py_input)
+                # handle array or scalar
+                if hasattr(preds, '__len__'):
+                    result = float(preds[0])
+                else:
+                    result = float(preds)
+            except Exception as e:
+                raise RuntimeError(f"Pyfunc prediction failed: {e}")
+
         print(f"Prediction successful: {result}")
-        
+
         return {
             "flood_probability": round(float(result), 4),
             "status": "success"
