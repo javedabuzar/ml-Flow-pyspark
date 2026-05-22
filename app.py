@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
+import mlflow
 import mlflow.spark
 import glob
 import os
@@ -91,7 +92,6 @@ def load_models():
                         print(f"Local Spark load failed: {spark_local_err}")
                         # As fallback, try python/pyfunc flavor (no JVM)
                         try:
-                            import mlflow.pyfunc
                             model = mlflow.pyfunc.load_model(fallback_model_path)
                             globals()['model_type'] = 'pyfunc'
                             print(f"Model loaded as pyfunc from: {fallback_model_path}")
