@@ -33,35 +33,112 @@ model_type = None  # 'spark' or 'pyfunc'
 _models_lock = Lock()
 MODEL_NAME = "Flood_Prediction_Spark_Model"
 PREPROCESSOR_PATH = "src/models/preprocessing_pipeline_model"
+_default_spark_dir = os.path.join(os.environ.get("TEMP", "/tmp"), "spark")
+SPARK_LOCAL_DIR = os.getenv("SPARK_LOCAL_DIR", _default_spark_dir)
+
+
+def _use_spark_enabled() -> bool:
+    return os.getenv("USE_SPARK", "1").lower() not in ("0", "false", "no")
+
 
 def get_spark():
     global spark
     if spark is None:
-        spark = SparkSession.builder \
-            .appName(APP_NAME) \
-            .master(params.get('spark', {}).get('master', 'local')) \
-            .config("spark.driver.memory", "512m") \
-            .config("spark.executor.memory", "512m") \
-            .config("spark.driver.host", "127.0.0.1") \
-            .config("spark.driver.bindAddress", "127.0.0.1") \
-            .config("spark.network.timeout", "800s") \
-            .config("spark.executor.heartbeatInterval", "100s") \
-            .config("spark.python.worker.reuse", "false") \
-            .config("spark.python.worker.timeout", "120") \
-            .config("spark.python.worker.faulthandler.enabled", "true") \
-            .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true") \
-            .config("spark.ui.enabled", "false") \
-            .config("spark.ui.showConsoleProgress", "false") \
+        driver_mem = os.getenv("SPARK_DRIVER_MEMORY", "1g")
+        executor_mem = os.getenv("SPARK_EXECUTOR_MEMORY", "1g")
+        os.makedirs(SPARK_LOCAL_DIR, exist_ok=True)
+        master = params.get("spark", {}).get("master", "local[*]")
+        spark = (
+            SparkSession.builder.appName(APP_NAME)
+            .master(master)
+            .config("spark.driver.memory", driver_mem)
+            .config("spark.executor.memory", executor_mem)
+            .config("spark.driver.host", "127.0.0.1")
+            .config("spark.driver.bindAddress", "0.0.0.0")
+            .config("spark.local.dir", SPARK_LOCAL_DIR)
+            .config("spark.network.timeout", "800s")
+            .config("spark.executor.heartbeatInterval", "100s")
+            .config("spark.python.worker.reuse", "false")
+            .config("spark.python.worker.timeout", "120")
+            .config("spark.python.worker.faulthandler.enabled", "true")
+            .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true")
+            .config("spark.ui.enabled", "false")
+            .config("spark.ui.showConsoleProgress", "false")
             .getOrCreate()
+        )
     return spark
 
-def load_models(load_spark=True):
-    global preprocessor, model
+
+def reset_spark_and_models():
+    global spark, preprocessor, model, model_type
     with _models_lock:
+        if spark is not None:
+            try:
+                spark.stop()
+            except Exception:
+                pass
+        spark = None
+        preprocessor = None
+        model = None
+        model_type = None
+
+
+def _is_spark_session_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "no active or default spark session" in msg or "spark session" in msg
+
+
+def _spark_artifacts_present() -> bool:
+    has_spark_model = bool(glob.glob("mlruns/**/artifacts/model", recursive=True))
+    return has_spark_model or os.path.exists(PREPROCESSOR_PATH)
+
+def _pyfunc_loader_module(artifacts_dir: str) -> str | None:
+    mlmodel_path = os.path.join(artifacts_dir, "MLmodel")
+    if not os.path.exists(mlmodel_path):
+        return None
+    try:
+        with open(mlmodel_path) as f:
+            doc = yaml.safe_load(f) or {}
+        pf = (doc.get("flavors") or {}).get("python_function") or {}
+        return pf.get("loader_module")
+    except Exception:
+        return None
+
+
+def _pyfunc_artifact_sort_key(artifacts_dir: str, load_spark: bool = True) -> tuple:
+    """PySpark-first when load_spark=True; sklearn-first when Spark is disabled."""
+    loader = _pyfunc_loader_module(artifacts_dir) or ""
+    if load_spark:
+        if loader == "mlflow.spark":
+            rank = 0
+        elif loader == "mlflow.sklearn":
+            rank = 2
+        else:
+            rank = 1
+    else:
+        if loader == "mlflow.sklearn":
+            rank = 0
+        elif loader == "mlflow.spark":
+            rank = 2
+        else:
+            rank = 1
+    return (rank, -os.path.getmtime(artifacts_dir))
+
+
+def load_models(load_spark=None):
+    global preprocessor, model
+    if load_spark is None:
+        load_spark = _use_spark_enabled()
+    with _models_lock:
+        if load_spark:
+            get_spark()
         if preprocessor is None:
-            if os.path.exists(PREPROCESSOR_PATH):
+            if load_spark and os.path.exists(PREPROCESSOR_PATH):
+                get_spark()
                 preprocessor = PipelineModel.load(PREPROCESSOR_PATH)
                 print(f"Preprocessor loaded from {PREPROCESSOR_PATH}")
+            elif os.path.exists(PREPROCESSOR_PATH):
+                print(f"Preprocessor file exists but Spark loading is disabled for this call: {PREPROCESSOR_PATH}")
             else:
                 print(f"Preprocessor path not found: {PREPROCESSOR_PATH}")
         if model is None:
@@ -70,7 +147,7 @@ def load_models(load_spark=True):
             if load_spark:
                 # Try Spark model from registry first (preferred)
                 try:
-                    sp = get_spark()
+                    get_spark()
                     model = mlflow.spark.load_model(model_uri)
                     globals()['model_type'] = 'spark'
                     print("Model loaded from registry (Spark)")
@@ -85,7 +162,7 @@ def load_models(load_spark=True):
                     if spark_model_paths:
                         fallback_model_path = os.path.abspath(spark_model_paths[0])
                         try:
-                            sp = get_spark()
+                            get_spark()
                             model = mlflow.spark.load_model(fallback_model_path)
                             globals()['model_type'] = 'spark'
                             print(f"Model loaded from local Spark artifact: {fallback_model_path}")
@@ -94,17 +171,23 @@ def load_models(load_spark=True):
                     else:
                         print("No local Spark model artifact found under mlruns/**/artifacts/model")
 
-            # If registry/local Spark both failed or Spark loading skipped, try loading any pyfunc artifact in mlruns
+            # If registry/local Spark both failed or Spark loading skipped, try pyfunc artifacts in mlruns
             if model is None:
-                artifact_dirs = sorted(
-                    glob.glob("mlruns/**/artifacts", recursive=True),
-                    key=os.path.getmtime,
-                    reverse=True
-                )
+                artifact_dirs = [
+                    p for p in glob.glob("mlruns/**/artifacts", recursive=True)
+                    if os.path.exists(os.path.join(p, "MLmodel"))
+                ]
+                artifact_dirs.sort(key=lambda p: _pyfunc_artifact_sort_key(p, load_spark))
                 for p in artifact_dirs:
-                    mlmodel_path = os.path.join(p, "MLmodel")
-                    if not os.path.exists(mlmodel_path):
+                    loader = _pyfunc_loader_module(p)
+                    if loader == "mlflow.spark" and not load_spark:
                         continue
+                    if loader == "mlflow.spark":
+                        try:
+                            get_spark()
+                        except Exception as spark_err:
+                            print(f"Skipping Spark pyfunc artifact (no session): {p}: {spark_err}")
+                            continue
                     try:
                         model = mlflow.pyfunc.load_model(p)
                         globals()['model_type'] = 'pyfunc'
@@ -146,91 +229,99 @@ class PredictionInput(BaseModel):
 def home():
     return FileResponse("static/index.html")
 
+def _run_prediction(pr, mdl, input_dict: dict) -> float:
+    mtype = globals().get("model_type")
+    if mtype == "spark":
+        sp = get_spark()
+        import json
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump([input_dict], f)
+            temp_path = f.name.replace("\\", "/")
+
+        input_df = sp.read.json(temp_path)
+        print(f"Input DF loaded via JSON. Columns: {input_df.columns}")
+
+        if pr is None:
+            raise RuntimeError("Preprocessor not found for Spark model")
+
+        transformed_df = pr.transform(input_df)
+        print("Preprocessing done.")
+
+        prediction_df = mdl.transform(transformed_df)
+        print("Prediction transformation done.")
+
+        row = prediction_df.select("prediction").first()
+        if row is None:
+            raise ValueError("Model returned no prediction")
+        return float(row[0])
+
+    import pandas as pd
+
+    py_input = pd.DataFrame([input_dict])
+    preds = mdl.predict(py_input)
+    if hasattr(preds, "__len__"):
+        return float(preds[0])
+    return float(preds)
+
+
 @app.post("/predict")
 def predict(data: PredictionInput):
-    try:
-        # Ensure models are available (lazy load)
-        pr, mdl = load_models()
-        if mdl is None:
-            # Safe fallback: return a canned response so the UI remains usable
-            print("Model not available — returning fallback prediction")
-            return {"flood_probability": 0.5, "status": "fallback"}
+    load_spark = _use_spark_enabled()
+    input_dict = {k: float(v) for k, v in data.model_dump().items()}
+    last_error = None
 
-        # Prepare input
-        input_dict = {k: float(v) for k, v in data.model_dump().items()}
+    for attempt in range(2):
+        try:
+            if attempt > 0:
+                reset_spark_and_models()
 
-        # If model is a Spark model, use Spark pipeline
-        if globals().get('model_type') == 'spark':
-            sp = get_spark()
-            import json
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json.dump([input_dict], f)
-                temp_path = f.name.replace("\\", "/")
+            pr, mdl = load_models(load_spark=load_spark)
+            if mdl is None:
+                print("Model not available — returning fallback prediction")
+                return {"flood_probability": 0.5, "status": "fallback"}
 
-            input_df = sp.read.json(temp_path)
-            print(f"Input DF loaded via JSON. Columns: {input_df.columns}")
+            if globals().get("model_type") == "spark":
+                get_spark()
 
-            if pr is None:
-                raise RuntimeError("Preprocessor not found for Spark model")
+            result = _run_prediction(pr, mdl, input_dict)
+            print(f"Prediction successful: {result}")
+            return {
+                "flood_probability": round(result, 4),
+                "status": "success",
+            }
+        except Exception as e:
+            last_error = e
+            print(f"Prediction Error (attempt {attempt + 1}): {e}")
+            import traceback
 
-            transformed_df = pr.transform(input_df)
-            print("Preprocessing done.")
-
-            prediction_df = mdl.transform(transformed_df)
-            print("Prediction transformation done.")
-
-            row = prediction_df.select("prediction").first()
-            if row is None:
-                raise ValueError("Model returned no prediction")
-            result = row[0]
-
-        else:
-            # Try pyfunc / sklearn-like model (no Spark)
-            try:
-                import pandas as pd
-                py_input = pd.DataFrame([input_dict])
-                # mlflow pyfunc models expose predict
-                preds = mdl.predict(py_input)
-                # handle array or scalar
-                if hasattr(preds, '__len__'):
-                    result = float(preds[0])
-                else:
-                    result = float(preds)
-            except Exception as e:
-                raise RuntimeError(f"Pyfunc prediction failed: {e}")
-
-        print(f"Prediction successful: {result}")
-
-        return {
-            "flood_probability": round(float(result), 4),
-            "status": "success"
-        }
-    except Exception as e:
-        print(f"Prediction Error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+            traceback.print_exc()
+            if attempt == 0 and load_spark and _is_spark_session_error(e):
+                print("Retrying prediction after Spark session reset...")
+                continue
+            raise HTTPException(status_code=500, detail=str(last_error))
 
 
 @app.get("/health")
 def health():
-    status = {"app": True}
+    status = {
+        "app": True,
+        "use_spark": _use_spark_enabled(),
+        "spark_artifacts_present": _spark_artifacts_present(),
+        "preprocessor_present": os.path.exists(PREPROCESSOR_PATH),
+    }
     # Do not start Spark here — starting Spark can crash on small containers.
-    # Instead, only check model availability (pyfunc or spark) without forcing JVM.
     try:
         pr, mdl = load_models(load_spark=False)
-        mtype = globals().get('model_type')
+        mtype = globals().get("model_type")
         status["model_type"] = mtype
         if mdl is None:
             status["model_loaded"] = False
+        elif mtype == "spark":
+            status["model_loaded"] = pr is not None
         else:
-            if mtype == 'spark':
-                # Spark model needs preprocessor
-                status["model_loaded"] = (pr is not None)
-            else:
-                # pyfunc or other python model — preprocessor optional
-                status["model_loaded"] = True
+            status["model_loaded"] = True
     except Exception as e:
         status["model_loaded"] = False
         status["model_error"] = str(e)

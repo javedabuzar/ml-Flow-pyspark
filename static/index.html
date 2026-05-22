@@ -346,7 +346,8 @@
                 updateUI(result.flood_probability);
             } catch (error) {
                 console.error(error);
-                alert('Error connecting to PySpark API. Make sure app.py is running!');
+                const msg = error?.message || String(error);
+                alert(`Prediction failed: ${msg}`);
             }
         }
 
