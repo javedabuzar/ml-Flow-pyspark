@@ -1,0 +1,13 @@
+spark:
+  app_name: "FloodPrediction"
+  master: "local[*]"
+
+data:
+  raw_path: "src/data/raw/flood.parquet"
+  processed_path: "src/data/processed/"
+  test_size: 0.2
+  random_state: 42
+
+model:
+  cv: 5
+  scoring: r2

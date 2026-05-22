@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FloodGuard | AI-Powered Flood Prediction</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #00d2ff;
+            --secondary: #3a7bd5;
+            --bg: #050a10;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --glass: rgba(15, 23, 42, 0.8);
+            --text: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            background-image: url('/static/bg.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, rgba(5, 10, 16, 0.9) 100%);
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        header h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.7;
+            letter-spacing: 1px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+            animation: fadeInUp 1s ease-out 0.2s both;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .input-grid {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 25px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .input-group label span {
+            color: var(--text);
+            opacity: 0.6;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--primary);
+            transition: 0.3s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .result-card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: sticky;
+            top: 40px;
+            height: fit-content;
+        }
+
+        .gauge-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin-bottom: 30px;
+        }
+
+        .gauge-svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.05);
+            stroke-width: 12;
+        }
+
+        .gauge-progress {
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 12;
+            stroke-linecap: round;
+            stroke-dasharray: 565;
+            stroke-dashoffset: 565;
+            transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .gauge-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .gauge-value .number {
+            font-size: 3rem;
+            font-weight: 800;
+            display: block;
+        }
+
+        .gauge-value .label {
+            font-size: 0.8rem;
+            opacity: 0.5;
+            text-transform: uppercase;
+        }
+
+        .prediction-text {
+            text-align: center;
+        }
+
+        .prediction-text h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .prediction-text p {
+            opacity: 0.7;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .btn-predict {
+            margin-top: 30px;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 10px 20px rgba(0, 210, 255, 0.2);
+        }
+
+        .btn-predict:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(0, 210, 255, 0.4);
+        }
+
+        .btn-predict:active {
+            transform: translateY(0);
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .risk-low { color: #10b981; }
+        .risk-medium { color: #f59e0b; }
+        .risk-high { color: #ef4444; }
+
+    </style>
+</head>
+<body>
+    <div class="overlay"></div>
+    
+    <div class="container">
+        <header>
+            <h1>FloodGuard AI</h1>
+            <p>Advanced Real-time Flood Risk Analysis powered by PySpark & MLflow</p>
+        </header>
+
+        <div class="dashboard">
+            <div class="input-grid" id="inputContainer">
+                <!-- Inputs will be generated here -->
+            </div>
+
+            <div class="result-card">
+                <div class="gauge-container">
+                    <svg class="gauge-svg" viewBox="0 0 200 200">
+                        <circle class="gauge-bg" cx="100" cy="100" r="90"></circle>
+                        <circle id="gaugeProgress" class="gauge-progress" cx="100" cy="100" r="90"></circle>
+                    </svg>
+                    <div class="gauge-value">
+                        <span class="number" id="riskValue">0.00</span>
+                        <span class="label">Risk Index</span>
+                    </div>
+                </div>
+
+                <div class="prediction-text">
+                    <h2 id="riskStatus">Initializing...</h2>
+                    <p id="riskDesc">Adjust the parameters on the left to see the real-time flood probability for the selected environmental conditions.</p>
+                </div>
+
+                <button class="btn-predict" onclick="predictFlood()">Analyze Risk</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const features = [
+            "MonsoonIntensity", "TopographyDrainage", "RiverManagement", "Deforestation", 
+            "Urbanization", "ClimateChange", "DamsQuality", "Siltation", 
+            "AgriculturalPractices", "Encroachments", "IneffectiveDisasterPreparedness", 
+            "DrainageSystems", "CoastalVulnerability", "Landslides", "Watersheds", 
+            "DeterioratingInfrastructure", "PopulationScore", "WetlandLoss", 
+            "InadequatePlanning", "PoliticalFactors"
+        ];
+
+        function initInputs() {
+            const container = document.getElementById('inputContainer');
+            features.forEach(f => {
+                const group = document.createElement('div');
+                group.className = 'input-group';
+                
+                // Format label for display
+                const labelText = f.replace(/([A-Z])/g, ' $1').trim();
+                
+                group.innerHTML = `
+                    <label>${labelText} <span id="val-${f}">5</span></label>
+                    <input type="range" id="${f}" min="0" max="10" value="5" step="1" 
+                           oninput="document.getElementById('val-${f}').innerText = this.value">
+                `;
+                container.appendChild(group);
+            });
+        }
+
+        async function predictFlood() {
+            const data = {};
+            features.forEach(f => {
+                data[f] = parseFloat(document.getElementById(f).value);
+            });
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) throw new Error('API Error');
+                
+                const result = await response.json();
+                updateUI(result.flood_probability);
+            } catch (error) {
+                console.error(error);
+                alert('Error connecting to PySpark API. Make sure app.py is running!');
+            }
+        }
+
+        function updateUI(probability) {
+            const valueDisplay = document.getElementById('riskValue');
+            const statusDisplay = document.getElementById('riskStatus');
+            const gauge = document.getElementById('gaugeProgress');
+            
+            // Animate number
+            let start = parseFloat(valueDisplay.innerText);
+            let end = probability;
+            let duration = 1000;
+            let startTime = null;
+
+            function animate(timestamp) {
+                if (!startTime) startTime = timestamp;
+                let progress = timestamp - startTime;
+                let current = start + (end - start) * Math.min(progress / duration, 1);
+                valueDisplay.innerText = current.toFixed(2);
+                if (progress < duration) requestAnimationFrame(animate);
+            }
+            requestAnimationFrame(animate);
+
+            // Update Gauge
+            const circumference = 2 * Math.PI * 90;
+            const offset = circumference - (probability * circumference);
+            gauge.style.strokeDashoffset = offset;
+
+            // Update Status & Color
+            if (probability < 0.4) {
+                statusDisplay.innerText = "LOW RISK";
+                statusDisplay.className = "risk-low";
+                gauge.style.stroke = "#10b981";
+            } else if (probability < 0.6) {
+                statusDisplay.innerText = "MODERATE RISK";
+                statusDisplay.className = "risk-medium";
+                gauge.style.stroke = "#f59e0b";
+            } else {
+                statusDisplay.innerText = "CRITICAL RISK";
+                statusDisplay.className = "risk-high";
+                gauge.style.stroke = "#ef4444";
+            }
+        }
+
+        window.onload = initInputs;
+    </script>
+</body>
+</html>

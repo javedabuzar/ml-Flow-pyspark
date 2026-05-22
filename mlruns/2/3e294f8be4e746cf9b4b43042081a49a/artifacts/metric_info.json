@@ -1,0 +1,20 @@
+{
+  "r2_test_df": {
+    "evaluator_class": "pyspark.ml.evaluation.RegressionEvaluator",
+    "params": {
+      "labelCol": "label",
+      "metricName": "r2",
+      "predictionCol": "prediction",
+      "throughOrigin": false
+    }
+  },
+  "rmse_test_df": {
+    "evaluator_class": "pyspark.ml.evaluation.RegressionEvaluator",
+    "params": {
+      "labelCol": "label",
+      "metricName": "rmse",
+      "predictionCol": "prediction",
+      "throughOrigin": false
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "MonsoonIntensity": 10,
+  "TopographyDrainage": 10,
+  "RiverManagement": 10,
+  "Deforestation": 10,
+  "Urbanization": 10,
+  "ClimateChange": 10,
+  "DamsQuality": 10,
+  "Siltation": 10,
+  "AgriculturalPractices": 10,
+  "Encroachments": 10,
+  "IneffectiveDisasterPreparedness": 10,
+  "DrainageSystems": 10,
+  "CoastalVulnerability": 10,
+  "Landslides": 10,
+  "Watersheds": 10,
+  "DeterioratingInfrastructure": 10,
+  "PopulationScore": 10,
+  "WetlandLoss": 10,
+  "InadequatePlanning": 10,
+  "PoliticalFactors": 10
+}

@@ -1,0 +1,23 @@
+artifact_path: file:C:/Users/Danial/Desktop/Coding/SMIT-GROUP-PROJECT/mlruns/1/models/m-d5c189f43fa747b1a9e033076a887f39/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.14.3
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.12.0
+model_id: m-d5c189f43fa747b1a9e033076a887f39
+model_size_bytes: 657
+model_uuid: m-d5c189f43fa747b1a9e033076a887f39
+prompts: null
+run_id: bc6670ca7a0d49dbad87635a4818ecf1
+utc_time_created: '2026-05-08 12:49:44.284189'
