@@ -7,5 +7,7 @@ __pycache__/
 /data/
 /src/data
 /src/models
+!/src/models/preprocessing_pipeline_model
+!/src/models/preprocessing_pipeline_model/**
 lib/modules
 flood data/train.csv
