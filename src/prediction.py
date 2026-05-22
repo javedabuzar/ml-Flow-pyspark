@@ -31,14 +31,25 @@ def predict():
     preprocessing_model = PipelineModel.load(pipeline_model_path)
     print("Preprocessing Pipeline Model Loaded!")
 
-    # 3. Sample Data for Prediction
-    # Get schema from raw data to match columns exactly
+    # 3. Sample Data for Prediction — match training column types (integers 0-10)
     raw_df = spark.read.parquet(params["data"]["raw_path"])
     input_cols = [c for c in raw_df.columns if c not in ["id", "FloodProbability"]]
-    
-    # Create sample data with default values (e.g., 5.0)
-    sample_values = [5.0] * len(input_cols)
-    new_data = spark.createDataFrame([tuple(sample_values)], input_cols)
+    schema = {f.name: f.dataType for f in raw_df.schema.fields if f.name in input_cols}
+
+    from pyspark.sql.types import IntegerType, StringType, DoubleType
+
+    def coerce(val, dtype):
+        if isinstance(dtype, StringType):
+            return str(int(round(val)))
+        if isinstance(dtype, IntegerType):
+            return int(round(val))
+        return float(val)
+
+    sample_values = [coerce(5, schema.get(c, IntegerType())) for c in input_cols]
+    from pyspark.sql.types import StructType, StructField
+
+    struct = StructType([StructField(c, schema.get(c, IntegerType()), True) for c in input_cols])
+    new_data = spark.createDataFrame([sample_values], schema=struct)
     
     print("\nNew Data (Sample):")
     new_data.show()

@@ -1,0 +1,22 @@
+{
+  "MonsoonIntensity": 0,
+  "TopographyDrainage": 0,
+  "RiverManagement": 0,
+  "Deforestation": 0,
+  "Urbanization": 0,
+  "ClimateChange": 0,
+  "DamsQuality": 0,
+  "Siltation": 0,
+  "AgriculturalPractices": 0,
+  "Encroachments": 0,
+  "IneffectiveDisasterPreparedness": 0,
+  "DrainageSystems": 0,
+  "CoastalVulnerability": 0,
+  "Landslides": 0,
+  "Watersheds": 0,
+  "DeterioratingInfrastructure": 0,
+  "PopulationScore": 0,
+  "WetlandLoss": 0,
+  "InadequatePlanning": 0,
+  "PoliticalFactors": 0
+}

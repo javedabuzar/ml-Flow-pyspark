@@ -257,6 +257,8 @@
         .risk-low { color: #10b981; }
         .risk-medium { color: #f59e0b; }
         .risk-high { color: #ef4444; }
+        .risk-fallback { color: #f59e0b; }
+        .btn-predict:disabled { opacity: 0.6; cursor: wait; }
 
     </style>
 </head>
@@ -318,48 +320,81 @@
                 group.innerHTML = `
                     <label>${labelText} <span id="val-${f}">5</span></label>
                     <input type="range" id="${f}" min="0" max="10" value="5" step="1" 
-                           oninput="document.getElementById('val-${f}').innerText = this.value">
+                           oninput="onSliderInput('${f}', this.value)">
                 `;
                 container.appendChild(group);
             });
         }
 
-        async function predictFlood() {
+        let predictDebounceTimer = null;
+        let predictInFlight = false;
+
+        function onSliderInput(featureId, value) {
+            document.getElementById('val-' + featureId).innerText = value;
+            clearTimeout(predictDebounceTimer);
+            predictDebounceTimer = setTimeout(() => predictFlood(), 400);
+        }
+
+        function collectInputData() {
             const data = {};
             features.forEach(f => {
                 data[f] = parseFloat(document.getElementById(f).value);
             });
+            return data;
+        }
+
+        async function predictFlood() {
+            if (predictInFlight) return;
+            predictInFlight = true;
+            const btn = document.querySelector('.btn-predict');
+            if (btn) btn.disabled = true;
 
             try {
                 const response = await fetch('/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(collectInputData())
                 });
 
                 if (!response.ok) {
                     const errorText = await response.text();
                     throw new Error(`API Error ${response.status}: ${errorText}`);
                 }
-                
+
                 const result = await response.json();
-                updateUI(result.flood_probability);
+                updateUI(result.flood_probability, result.status);
             } catch (error) {
                 console.error(error);
                 const msg = error?.message || String(error);
                 alert(`Prediction failed: ${msg}`);
+            } finally {
+                predictInFlight = false;
+                if (btn) btn.disabled = false;
             }
         }
 
-        function updateUI(probability) {
+        function updateUI(probability, status) {
             const valueDisplay = document.getElementById('riskValue');
             const statusDisplay = document.getElementById('riskStatus');
+            const descDisplay = document.getElementById('riskDesc');
             const gauge = document.getElementById('gaugeProgress');
-            
-            // Animate number
-            let start = parseFloat(valueDisplay.innerText);
+
+            if (status === 'fallback') {
+                statusDisplay.innerText = "DEMO VALUE";
+                statusDisplay.className = "risk-fallback";
+                descDisplay.innerText = "Model unavailable — showing placeholder risk (0.50). Check server logs.";
+                gauge.style.stroke = "#f59e0b";
+                valueDisplay.innerText = probability.toFixed(2);
+                const circumference = 2 * Math.PI * 90;
+                gauge.style.strokeDashoffset = circumference - (probability * circumference);
+                return;
+            }
+
+            descDisplay.innerText = "Adjust the parameters on the left to see real-time flood probability for the selected environmental conditions.";
+
+            let start = parseFloat(valueDisplay.innerText) || 0;
             let end = probability;
-            let duration = 1000;
+            let duration = 600;
             let startTime = null;
 
             function animate(timestamp) {
@@ -371,17 +406,14 @@
             }
             requestAnimationFrame(animate);
 
-            // Update Gauge
             const circumference = 2 * Math.PI * 90;
-            const offset = circumference - (probability * circumference);
-            gauge.style.strokeDashoffset = offset;
+            gauge.style.strokeDashoffset = circumference - (probability * circumference);
 
-            // Update Status & Color
-            if (probability < 0.4) {
+            if (probability < 0.35) {
                 statusDisplay.innerText = "LOW RISK";
                 statusDisplay.className = "risk-low";
                 gauge.style.stroke = "#10b981";
-            } else if (probability < 0.6) {
+            } else if (probability < 0.65) {
                 statusDisplay.innerText = "MODERATE RISK";
                 statusDisplay.className = "risk-medium";
                 gauge.style.stroke = "#f59e0b";
@@ -392,7 +424,10 @@
             }
         }
 
-        window.onload = initInputs;
+        window.onload = () => {
+            initInputs();
+            predictFlood();
+        };
     </script>
 </body>
 </html>

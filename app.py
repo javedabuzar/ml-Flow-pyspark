@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pyspark.sql import SparkSession
+from pyspark.sql.types import IntegerType, DoubleType, StringType, StructField, StructType
 from pyspark.ml import PipelineModel
 import mlflow
 import mlflow.spark
@@ -32,7 +33,9 @@ model = None
 model_type = None  # 'spark' or 'pyfunc'
 _models_lock = Lock()
 _last_load_spark = None  # track cache mode so /health cannot poison /predict
+_feature_dtypes_cache = None
 MODEL_NAME = "Flood_Prediction_Spark_Model"
+TARGET_COL = "FloodProbability"
 PREPROCESSOR_PATH = "src/models/preprocessing_pipeline_model"
 _default_spark_dir = os.path.join(os.environ.get("TEMP", "/tmp"), "spark")
 SPARK_LOCAL_DIR = os.getenv("SPARK_LOCAL_DIR", _default_spark_dir)
@@ -246,6 +249,65 @@ class PredictionInput(BaseModel):
     InadequatePlanning: float
     PoliticalFactors: float
 
+
+def _feature_names() -> list[str]:
+    return list(PredictionInput.model_fields.keys())
+
+
+def _get_raw_feature_dtypes() -> dict:
+    global _feature_dtypes_cache
+    if _feature_dtypes_cache is not None:
+        return _feature_dtypes_cache
+
+    raw_path = params["data"]["raw_path"]
+    dtypes = {}
+    if os.path.isdir(raw_path) and os.listdir(raw_path):
+        try:
+            sp = get_spark()
+            schema = sp.read.parquet(raw_path).schema
+            skip = {TARGET_COL, "id", "ID"}
+            dtypes = {
+                f.name: f.dataType
+                for f in schema.fields
+                if f.name in _feature_names() and f.name not in skip
+            }
+        except Exception as e:
+            print(f"Could not read raw parquet schema: {e}")
+
+    for name in _feature_names():
+        if name not in dtypes:
+            dtypes[name] = IntegerType()
+
+    _feature_dtypes_cache = dtypes
+    return dtypes
+
+
+def _coerce_feature_value(val: float, dtype):
+    if isinstance(dtype, StringType):
+        return str(int(round(val)))
+    if isinstance(dtype, IntegerType):
+        return int(round(val))
+    if isinstance(dtype, DoubleType):
+        return float(val)
+    return float(val)
+
+
+def _build_spark_input_df(sp, input_dict: dict):
+    dtypes = _get_raw_feature_dtypes()
+    row = [_coerce_feature_value(input_dict[name], dtypes[name]) for name in _feature_names()]
+    schema = StructType(
+        [StructField(name, dtypes[name], True) for name in _feature_names()]
+    )
+    return sp.createDataFrame([row], schema=schema)
+
+
+def _normalize_probability(value: float) -> float:
+    v = float(value)
+    if v > 1.0 and v <= 100.0:
+        v = v / 100.0
+    return max(0.0, min(1.0, v))
+
+
 @app.get("/")
 def home():
     return FileResponse("static/index.html")
@@ -254,15 +316,8 @@ def _run_prediction(pr, mdl, input_dict: dict) -> float:
     mtype = globals().get("model_type")
     if mtype == "spark":
         sp = get_spark()
-        import json
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump([input_dict], f)
-            temp_path = f.name.replace("\\", "/")
-
-        input_df = sp.read.json(temp_path)
-        print(f"Input DF loaded via JSON. Columns: {input_df.columns}")
+        input_df = _build_spark_input_df(sp, input_dict)
+        print(f"Input DF columns: {input_df.columns}, dtypes: {input_df.dtypes}")
 
         if pr is None:
             raise RuntimeError("Preprocessor not found for Spark model")
@@ -276,15 +331,20 @@ def _run_prediction(pr, mdl, input_dict: dict) -> float:
         row = prediction_df.select("prediction").first()
         if row is None:
             raise ValueError("Model returned no prediction")
-        return float(row[0])
+        return _normalize_probability(float(row[0]))
 
     import pandas as pd
 
-    py_input = pd.DataFrame([input_dict])
+    dtypes = _get_raw_feature_dtypes()
+    row = {
+        name: _coerce_feature_value(input_dict[name], dtypes[name])
+        for name in _feature_names()
+    }
+    py_input = pd.DataFrame([row])
     preds = mdl.predict(py_input)
     if hasattr(preds, "__len__"):
-        return float(preds[0])
-    return float(preds)
+        return _normalize_probability(float(preds[0]))
+    return _normalize_probability(float(preds))
 
 
 @app.post("/predict")
@@ -301,7 +361,10 @@ def predict(data: PredictionInput):
             pr, mdl = load_models(load_spark=load_spark)
             if mdl is None:
                 print("Model not available — returning fallback prediction")
-                return {"flood_probability": 0.5, "status": "fallback"}
+                return {
+                    "flood_probability": 0.5,
+                    "status": "fallback",
+                }
 
             if globals().get("model_type") == "spark":
                 get_spark()
