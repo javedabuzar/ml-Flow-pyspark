@@ -55,7 +55,7 @@ def get_spark():
             .getOrCreate()
     return spark
 
-def load_models():
+def load_models(load_spark=True):
     global preprocessor, model
     with _models_lock:
         if preprocessor is None:
@@ -67,31 +67,34 @@ def load_models():
         if model is None:
             mlflow.set_tracking_uri("sqlite:///mlflow.db")
             model_uri = f"models:/{MODEL_NAME}/latest"
-            # Try Spark model from registry first
-            try:
-                model = mlflow.spark.load_model(model_uri)
-                globals()['model_type'] = 'spark'
-                print("Model loaded from registry (Spark)")
-            except Exception as registry_error:
-                print(f"Registry Spark model load failed: {registry_error}")
-                # Try local Spark model directories under mlruns/**/artifacts/model
-                spark_model_paths = sorted(
-                    glob.glob("mlruns/**/artifacts/model", recursive=True),
-                    key=os.path.getmtime,
-                    reverse=True
-                )
-                if spark_model_paths:
-                    fallback_model_path = spark_model_paths[0]
-                    try:
-                        model = mlflow.spark.load_model(fallback_model_path)
-                        globals()['model_type'] = 'spark'
-                        print(f"Model loaded from local Spark artifact: {fallback_model_path}")
-                    except Exception as spark_local_err:
-                        print(f"Local Spark load failed: {spark_local_err}")
-                else:
-                    print("No local Spark model artifact found under mlruns/**/artifacts/model")
+            if load_spark:
+                # Try Spark model from registry first (preferred)
+                try:
+                    sp = get_spark()
+                    model = mlflow.spark.load_model(model_uri)
+                    globals()['model_type'] = 'spark'
+                    print("Model loaded from registry (Spark)")
+                except Exception as registry_error:
+                    print(f"Registry Spark model load failed: {registry_error}")
+                    # Try local Spark model directories under mlruns/**/artifacts/model
+                    spark_model_paths = sorted(
+                        glob.glob("mlruns/**/artifacts/model", recursive=True),
+                        key=os.path.getmtime,
+                        reverse=True
+                    )
+                    if spark_model_paths:
+                        fallback_model_path = os.path.abspath(spark_model_paths[0])
+                        try:
+                            sp = get_spark()
+                            model = mlflow.spark.load_model(fallback_model_path)
+                            globals()['model_type'] = 'spark'
+                            print(f"Model loaded from local Spark artifact: {fallback_model_path}")
+                        except Exception as spark_local_err:
+                            print(f"Local Spark load failed: {spark_local_err}")
+                    else:
+                        print("No local Spark model artifact found under mlruns/**/artifacts/model")
 
-            # If registry and local Spark both failed, try loading any pyfunc artifact in mlruns
+            # If registry/local Spark both failed or Spark loading skipped, try loading any pyfunc artifact in mlruns
             if model is None:
                 artifact_dirs = sorted(
                     glob.glob("mlruns/**/artifacts", recursive=True),
@@ -216,7 +219,7 @@ def health():
     # Do not start Spark here — starting Spark can crash on small containers.
     # Instead, only check model availability (pyfunc or spark) without forcing JVM.
     try:
-        pr, mdl = load_models()
+        pr, mdl = load_models(load_spark=False)
         mtype = globals().get('model_type')
         status["model_type"] = mtype
         if mdl is None:
