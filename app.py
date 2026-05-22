@@ -106,7 +106,6 @@ def load_models():
                 any_local = glob.glob("mlruns/**/artifacts/model", recursive=True)
                 for p in sorted(any_local, key=os.path.getmtime, reverse=True):
                     try:
-                        import mlflow.pyfunc
                         model = mlflow.pyfunc.load_model(p)
                         globals()['model_type'] = 'pyfunc'
                         print(f"Fallback: model loaded as pyfunc from {p}")
