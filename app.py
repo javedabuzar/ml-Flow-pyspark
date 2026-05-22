@@ -214,16 +214,12 @@ def predict(data: PredictionInput):
 @app.get("/health")
 def health():
     status = {"app": True}
-    try:
-        sp = get_spark()
-        status["spark"] = True
-    except Exception as e:
-        status["spark"] = False
-        status["spark_error"] = str(e)
-
+    # Do not start Spark here — starting Spark can crash on small containers.
+    # Instead, only check model availability (pyfunc or spark) without forcing JVM.
     try:
         pr, mdl = load_models()
         status["model_loaded"] = (pr is not None and mdl is not None)
+        status["model_type"] = globals().get('model_type')
     except Exception as e:
         status["model_loaded"] = False
         status["model_error"] = str(e)
