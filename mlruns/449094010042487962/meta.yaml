@@ -1,0 +1,8 @@
+artifact_location: file:///D:/ml%20flow%20abuzar/mlruns/449094010042487962
+creation_time: 1779485842193
+experiment_id: '449094010042487962'
+last_update_time: 1779485842193
+lifecycle_stage: active
+name: flood-risk-pyspark
+trace_location: null
+workspace: default

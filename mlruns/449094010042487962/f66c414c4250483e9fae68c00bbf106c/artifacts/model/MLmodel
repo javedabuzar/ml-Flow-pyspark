@@ -1,0 +1,47 @@
+artifact_path: model
+flavors:
+  python_function:
+    data: sparkml
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.spark
+    python_version: 3.13.0
+  spark:
+    code: null
+    model_class: pyspark.ml.pipeline.PipelineModel
+    model_data: sparkml
+    pyspark_version: 4.1.1
+is_signature_from_type_hint: false
+mlflow_version: 3.12.0
+model_id: null
+model_size_bytes: 359855
+model_uuid: e2019dc6ae634d7cbe338a22a1a20d92
+prompts: null
+run_id: f66c414c4250483e9fae68c00bbf106c
+saved_input_example_info:
+  artifact_path: input_example.json
+  serving_input_path: serving_input_example.json
+  type: json_object
+signature:
+  inputs: '[{"type": "double", "name": "MonsoonIntensity", "required": true}, {"type":
+    "double", "name": "TopographyDrainage", "required": true}, {"type": "double",
+    "name": "RiverManagement", "required": true}, {"type": "double", "name": "Deforestation",
+    "required": true}, {"type": "double", "name": "Urbanization", "required": true},
+    {"type": "double", "name": "ClimateChange", "required": true}, {"type": "double",
+    "name": "DamsQuality", "required": true}, {"type": "double", "name": "Siltation",
+    "required": true}, {"type": "double", "name": "AgriculturalPractices", "required":
+    true}, {"type": "double", "name": "Encroachments", "required": true}, {"type":
+    "double", "name": "IneffectiveDisasterPreparedness", "required": true}, {"type":
+    "double", "name": "DrainageSystems", "required": true}, {"type": "double", "name":
+    "CoastalVulnerability", "required": true}, {"type": "double", "name": "Landslides",
+    "required": true}, {"type": "double", "name": "Watersheds", "required": true},
+    {"type": "double", "name": "DeterioratingInfrastructure", "required": true}, {"type":
+    "double", "name": "PopulationScore", "required": true}, {"type": "double", "name":
+    "WetlandLoss", "required": true}, {"type": "double", "name": "InadequatePlanning",
+    "required": true}, {"type": "double", "name": "PoliticalFactors", "required":
+    true}]'
+  outputs: '[{"type": "double", "name": "prediction", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-05-23 09:29:55.094478'

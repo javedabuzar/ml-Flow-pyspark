@@ -1,0 +1,14 @@
+artifact_uri: file:///D:/ml%20flow%20abuzar/mlruns/449094010042487962/f66c414c4250483e9fae68c00bbf106c/artifacts
+end_time: 1779528669612
+entry_point_name: ''
+experiment_id: '449094010042487962'
+lifecycle_stage: active
+run_id: f66c414c4250483e9fae68c00bbf106c
+run_name: pyspark-rf-train
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1779528563152
+status: 3
+tags: []
+user_id: HDD BANK AMIN

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Kiro
+.kiro/
+
+# Logs
+*.log
+
+# Windows-only Hadoop binaries (not needed in Linux Docker container)
+tools/
+
+# NOTE: models/ is intentionally NOT ignored — Render needs the pre-trained model
+# NOTE: mlruns/ is intentionally NOT ignored — MLflow metadata needed at startup

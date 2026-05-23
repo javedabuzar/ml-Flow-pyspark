@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: flood-risk-predictor
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render free tier: 512MB RAM — enough for inference (model already trained)
+    # Set SKIP_TRAIN=1 so container loads pre-trained model, no training on startup
+    envVars:
+      - key: SKIP_TRAIN
+        value: "1"
+      - key: SPARK_DRIVER_MEMORY
+        value: "400m"
+      - key: SPARK_SHUFFLE_PARTITIONS
+        value: "2"
+      - key: SPARK_UI_ENABLED
+        value: "false"
+      - key: MLFLOW_TRACKING_URI
+        value: "file:///app/mlruns"
+      - key: PORT
+        value: "8000"
+    healthCheckPath: /health
+    # Render sets PORT env var — uvicorn must bind to it
+    # CMD in Dockerfile handles this via API_PORT env var
